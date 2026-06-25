@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>블록 블라스트 - 타임어택</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --opt-cell-size: 32px; 
+        }
+
+        @media (max-width: 500px) {
+            :root {
+                --opt-cell-size: calc((100vw - 20px) / 16); 
+            }
+        }
+        
+        @media (min-width: 501px) and (max-width: 600px) {
+            :root {
+                --opt-cell-size: 28px;
+            }
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c;
+            color: #f7fafc;
+            overscroll-behavior-y: contain; 
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: manipulation; 
+        }
+
+        input, select {
+            user-select: auto;
+            -webkit-user-select: auto;
+            touch-action: manipulation;
+        }
+        
+        button {
+            touch-action: manipulation;
+            cursor: pointer;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 2px;
+            background-color: #2d3748; 
+            padding: 4px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1 / 1;
+            margin: 0 auto;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+        }
+
+        .grid-cell {
+            background-color: #4a5568; 
+            border-radius: 4px;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        .grid-cell.filled {
+            box-shadow: inset 0 -3px 0 rgba(0,0,0,0.3), inset 0 2px 0 rgba(255,255,255,0.2);
+        }
+        
+        .grid-cell.highlight {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .block-options-container {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            gap: 0px; 
+            margin-top: auto;
+            margin-bottom: 5px;
+            min-height: 120px;
+        }
+
+        .block-option-wrapper {
+            flex: 1;
+            height: 100%;
+            min-height: 120px; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .shape-container {
+            display: grid;
+            gap: 2px;
+            transform-origin: center center;
+            transition: transform 0.1s ease;
+            position: relative;
+            cursor: grab;
+            touch-action: none; 
+        }
+
+        .shape-container::after {
+            content: '';
+            position: absolute;
+            top: -25px;
+            bottom: -25px;
+            left: -25px;
+            right: -25px;
+            z-index: 10;
+        }
+
+        .shape-container:active {
+            cursor: grabbing;
+        }
+
+        .shape-container.dragging {
+            opacity: 0.9;
+            filter: drop-shadow(0 10px 15px rgba(0,0,0,0.5));
+            z-index: 9999;
+            pointer-events: none; 
+        }
+
+        .shape-container.dragging::after {
+            display: none;
+        }
+
+        .shape-cell {
+            width: var(--opt-cell-size);
+            height: var(--opt-cell-size);
+            border-radius: 5px;
+            box-shadow: inset 0 -2px 0 rgba(0,0,0,0.3), inset 0 2px 0 rgba(255,255,255,0.2);
+        }
+
+        @keyframes clearAnimation {
+            0% { transform: scale(1); opacity: 1; filter: brightness(1); }
+            50% { transform: scale(1.2); opacity: 0.8; filter: brightness(2); }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        .clearing {
+            animation: clearAnimation 0.25s forwards ease-in;
+        }
+
+        .hidden { display: none !important; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #2d3748; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+    </style>
+</head>
+<body class="flex flex-col h-screen h-[100dvh] overflow-hidden bg-gray-900">
+
+    <div id="screen-hall-of-fame" class="flex-1 flex flex-col items-center justify-center p-4 bg-gray-900 absolute inset-0 z-40">
+        <div class="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-700 flex flex-col h-[85vh] h-[85dvh] max-h-[800px]">
+            <div class="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-center relative shrink-0">
+                <h1 class="text-3xl sm:text-4xl font-extrabold text-white tracking-wider drop-shadow-md">BLOCK BLAST</h1>
+                <p class="text-blue-200 mt-2 font-semibold">6분 타임어택 모드</p>
+                <button id="btn-admin-login" class="absolute top-4 right-4 text-xs text-white/50 hover:text-white transition cursor-pointer p-2">Admin</button>
+            </div>
+            
+            <div class="p-4 bg-gray-750 border-b border-gray-700 flex justify-between items-center shrink-0">
+                <h2 class="text-xl font-bold text-yellow-400 flex items-center gap-2">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                    명예의 전당
+                </h2>
+                <span id="conn-status" class="text-xs text-gray-500 font-bold">연결 중...</span>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 relative" id="leaderboard-container">
+                <div class="text-center text-gray-500 py-10" id="leaderboard-loading">
+                    랭킹 정보를 불러오는 중입니다...
+                </div>
+            </div>
+
+            <div class="p-6 bg-gray-800 border-t border-gray-700 text-center shrink-0">
+                <button id="btn-start-game" class="relative z-50 w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition active:scale-95 text-xl cursor-pointer">
+                    게임 시작
+                </button>
+                <p class="text-xs text-gray-400 mt-4">제한 시간 6분 안에 최고 점수에 도전하세요!</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-game" class="flex-1 flex flex-col w-full max-w-lg mx-auto p-2 sm:p-4 hidden relative">
+        <div class="flex justify-between items-center mb-4 bg-gray-800 p-3 sm:p-4 rounded-xl shadow-md border border-gray-700">
+            <div class="flex flex-col">
+                <span class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Score</span>
+                <span id="score-display" class="text-3xl font-bold text-white leading-none">0</span>
+            </div>
+            
+            <div class="flex flex-col items-center">
+                <span class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Time</span>
+                <div id="timer-display" class="text-3xl font-bold text-red-400 leading-none tabular-nums">06:00</div>
+            </div>
+        </div>
+
+        <div class="flex-1 flex flex-col justify-center relative" id="board-area">
+            <div id="grid" class="grid-container"></div>
+        </div>
+
+        <div id="block-options" class="block-options-container">
+            <div class="block-option-wrapper" id="opt-0"></div>
+            <div class="block-option-wrapper" id="opt-1"></div>
+            <div class="block-option-wrapper" id="opt-2"></div>
+        </div>
+    </div>
+
+    <div id="modal-gameover" class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 hidden backdrop-blur-sm overflow-y-auto">
+        <div class="bg-gray-800 p-6 sm:p-8 rounded-2xl shadow-2xl max-w-sm w-full border border-gray-600 text-center my-auto">
+            <h2 id="gameover-title" class="text-3xl font-extrabold text-red-500 mb-2">TIME OVER</h2>
+            <p class="text-gray-300 mb-6" id="gameover-desc">시간이 다 되었습니다!</p>
+            
+            <div class="bg-gray-900 rounded-xl p-4 mb-6 shadow-inner">
+                <span class="text-gray-400 block text-sm mb-1">최종 점수</span>
+                <span id="final-score" class="text-5xl font-black text-yellow-400">0</span>
+            </div>
+
+            <div id="rank-registration-section" class="mb-4">
+                <p class="text-sm text-gray-300 mb-2 text-left">랭킹에 등록할 닉네임을 입력하세요.</p>
+                <input type="text" id="input-nickname" maxlength="10" placeholder="닉네임 (최대 10자)" class="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 mb-2 focus:outline-none focus:border-blue-500 font-bold">
+                <p id="nickname-error" class="text-red-400 text-xs text-left h-4 mb-3"></p>
+                
+                <button id="btn-submit-score" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg shadow transition">
+                    🏆 랭킹 등록하기
+                </button>
+            </div>
+            
+            <div class="flex gap-2 mt-4">
+                <button id="btn-restart-game" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-2 rounded-lg shadow transition">
+                    다시 시작
+                </button>
+                <button id="btn-back-to-home" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-2 rounded-lg shadow transition">
+                    메인으로
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-admin" class="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 hidden backdrop-blur-sm">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-red-900">
+            <h2 class="text-2xl font-bold text-white mb-4">관리자 권한</h2>
+            <p class="text-sm text-gray-400 mb-4">비밀번호를 입력하세요.</p>
+            <input type="password" id="input-admin-pw" class="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-2 mb-4 focus:outline-none focus:border-red-500">
+            <div class="flex gap-2">
+                <button id="btn-admin-cancel" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white py-2 rounded-lg transition">취소</button>
+                <button id="btn-admin-confirm" class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg transition">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-alert" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60] hidden">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-xs w-full border border-gray-600 text-center">
+            <p id="alert-message" class="text-white mb-6 text-base whitespace-pre-wrap leading-relaxed"></p>
+            <button id="btn-alert-ok" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg transition mt-2 w-full">확인</button>
+        </div>
+    </div>
+
+    <div id="modal-confirm" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[70] hidden">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-xs w-full border border-gray-600 text-center">
+            <p id="confirm-message" class="text-white mb-6 text-base whitespace-pre-wrap"></p>
+            <div class="flex gap-2">
+                <button id="btn-confirm-cancel" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition">취소</button>
+                <button id="btn-confirm-ok" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded-lg transition">삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 구글 앱스 스크립트 웹앱 주소
+        // ==========================================
+        const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyzCBCIP1fPyn2VRm1pcozgpo6nuO_FCG5uUD_p1T8Rn4LCGOk1gLfEfU0_USbcoARo/exec"; 
+
+        const BOARD_SIZE = 8;
+        const TIME_LIMIT = 360; 
+        const ADMIN_PASSWORD = "0834"; 
+        const BAD_WORDS_REGEX = /(시발|씨발|개새끼|지랄|병신|좆|창녀|애미|애비|니기미|fuck|shit|bitch)/i;
+
+        let grid = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
+        let boardEls = []; 
+        let score = 0;
+        let timeRemaining = TIME_LIMIT;
+        let timerInterval = null;
+        let currentBlocks = [];
+        let isGameOver = false;
+        let isAdminMode = false;
+        let leaderboardData = [];
+        
+        let dragClone = null;
+        let draggedElement = null;
+        let draggedIndex = -1;
+        let dragPropX = 0;
+        let dragPropY = 0;
+        let dragTargetScale = 1;
+        let placeholderCells = []; 
+        let currentRow = -1;
+        let currentCol = -1;
+
+        const screens = {
+            home: document.getElementById('screen-hall-of-fame'),
+            game: document.getElementById('screen-game'),
+            gameover: document.getElementById('modal-gameover')
+        };
+        const gridEl = document.getElementById('grid');
+        const scoreEl = document.getElementById('score-display');
+        const timerEl = document.getElementById('timer-display');
+        const blockWrappers = [
+            document.getElementById('opt-0'),
+            document.getElementById('opt-1'),
+            document.getElementById('opt-2')
+        ];
+        const leaderboardContainer = document.getElementById('leaderboard-container');
+
+        const SHAPES = [
+            { matrix: [[1]], color: '#ef4444' }, { matrix: [[1,1]], color: '#f97316' }, { matrix: [[1],[1]], color: '#f97316' }, 
+            { matrix: [[1,1,1]], color: '#eab308' }, { matrix: [[1],[1],[1]], color: '#eab308' }, { matrix: [[1,1,1,1]], color: '#22c55e' }, 
+            { matrix: [[1],[1],[1],[1]], color: '#22c55e' }, { matrix: [[1,1,1,1,1]], color: '#06b6d4' }, { matrix: [[1],[1],[1],[1],[1]], color: '#06b6d4' }, 
+            { matrix: [[1,1],[1,1]], color: '#3b82f6' }, { matrix: [[1,1,1],[1,1,1],[1,1,1]], color: '#8b5cf6' }, { matrix: [[1,1],[1,0]], color: '#d946ef' }, 
+            { matrix: [[1,1],[0,1]], color: '#d946ef' }, { matrix: [[1,0],[1,1]], color: '#d946ef' }, { matrix: [[0,1],[1,1]], color: '#d946ef' }, 
+            { matrix: [[1,1,1],[0,1,0]], color: '#10b981' }, { matrix: [[0,1,0],[1,1,1]], color: '#10b981' }, { matrix: [[1,0],[1,1],[1,0]], color: '#10b981' }, 
+            { matrix: [[0,1],[1,1],[0,1]], color: '#10b981' }, { matrix: [[1,0],[1,0],[1,1]], color: '#f97316' }, { matrix: [[1,1,1],[1,0,0]], color: '#f97316' }, 
+            { matrix: [[1,1],[0,1],[0,1]], color: '#f97316' }, { matrix: [[0,0,1],[1,1,1]], color: '#f97316' }, { matrix: [[0,1],[0,1],[1,1]], color: '#3b82f6' }, 
+            { matrix: [[1,0,0],[1,1,1]], color: '#3b82f6' }, { matrix: [[1,1],[1,0],[1,0]], color: '#3b82f6' }, { matrix: [[1,1,1],[0,0,1]], color: '#3b82f6' }, 
+            { matrix: [[1,1,1],[1,1,1]], color: '#6366f1' }, { matrix: [[1,1],[1,1],[1,1]], color: '#6366f1' }
+        ];
+
+        // UI 헬퍼
+        function showAlert(msg) {
+            document.getElementById('alert-message').textContent = msg;
+            document.getElementById('modal-alert').classList.remove('hidden');
+        }
+        document.getElementById('btn-alert-ok').addEventListener('click', () => {
+            document.getElementById('modal-alert').classList.add('hidden');
+        });
+
+        let confirmCallback = null;
+        function showConfirm(msg, callback) {
+            document.getElementById('confirm-message').textContent = msg;
+            document.getElementById('modal-confirm').classList.remove('hidden');
+            confirmCallback = callback;
+        }
+        document.getElementById('btn-confirm-cancel').addEventListener('click', () => {
+            document.getElementById('modal-confirm').classList.add('hidden');
+            confirmCallback = null;
+        });
+        document.getElementById('btn-confirm-ok').addEventListener('click', () => {
+            document.getElementById('modal-confirm').classList.add('hidden');
+            if (confirmCallback) confirmCallback();
+        });
+
+        function switchScreen(screenName) {
+            Object.values(screens).forEach(s => { if (s) s.classList.add('hidden'); });
+            if(screens[screenName]) screens[screenName].classList.remove('hidden');
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+        
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
+        }
+
+        // ==========================================
+        // 구글 시트 랭킹 연동 시스템 (에러 방어 강화)
+        // ==========================================
+        
+        async function startDatabaseSync() {
+            if (!GOOGLE_WEB_APP_URL) return;
+            const connStatus = document.getElementById('conn-status');
+            if (connStatus) connStatus.textContent = "구글 시트 연동 중...";
+            
+            await fetchLeaderboard();
+            setInterval(fetchLeaderboard, 15000); // 15초마다 랭킹 자동 갱신
+        }
+
+        // 구글 시트에서 랭킹 불러오기
+        async function fetchLeaderboard() {
+            if (!GOOGLE_WEB_APP_URL) return;
+            
+            try {
+                const response = await fetch(GOOGLE_WEB_APP_URL + "?action=get&t=" + new Date().getTime(), {
+                    method: 'GET',
+                });
+                
+                if (!response.ok) throw new Error('서버 응답 오류 (권한 또는 URL 문제)');
+                
+                // HTML(로그인 창)이 반환되면 JSON 파싱 에러가 발생함
+                const rawText = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (e) {
+                    throw new Error('배포 권한 오류. 구글 시트를 "모든 사용자(Anyone)"로 다시 배포해주세요.');
+                }
+                
+                // 점수 내림차순 정렬 후 상위 20개만 보관
+                leaderboardData = data.sort((a, b) => b.score - a.score).slice(0, 20);
+                
+                const loader = document.getElementById('leaderboard-loading');
+                if (loader) loader.classList.add('hidden');
+                
+                const connStatus = document.getElementById('conn-status');
+                if (connStatus) {
+                    connStatus.textContent = "동기화 완료";
+                    connStatus.className = "text-emerald-400 font-bold text-xs";
+                }
+                
+                renderLeaderboard();
+            } catch (error) {
+                console.warn(error);
+                const connStatus = document.getElementById('conn-status');
+                if (connStatus) {
+                    connStatus.textContent = "연결 실패 (권한 에러)";
+                    connStatus.className = "text-red-400 font-bold text-xs";
+                }
+                
+                const loader = document.getElementById('leaderboard-loading');
+                if (loader && leaderboardData.length === 0) {
+                    loader.textContent = "구글 웹앱 권한 설정 문제로 랭킹을 불러올 수 없습니다.";
+                    loader.className = "text-center text-red-500 py-10 text-sm";
+                }
+            }
+        }
+
+        // 랭킹 화면 그리기
+        function renderLeaderboard() {
+            if (!leaderboardContainer) return;
+            if (leaderboardData.length === 0) {
+                if (!document.getElementById('leaderboard-loading')?.classList.contains('hidden')) return;
+                leaderboardContainer.innerHTML = `<div class="text-center text-gray-500 py-10">첫 번째 랭커가 되어보세요!</div>`;
+                return;
+            }
+            
+            let html = '<div class="space-y-2">';
+            leaderboardData.forEach((item, index) => {
+                let rankStyle = "text-gray-400 font-bold w-8";
+                let bgStyle = "bg-gray-700/50";
+                
+                if (index === 0) { rankStyle = "text-yellow-400 font-black text-xl w-8"; bgStyle = "bg-yellow-900/30 border border-yellow-700/50"; }
+                else if (index === 1) { rankStyle = "text-gray-300 font-bold text-lg w-8"; bgStyle = "bg-gray-600/30"; }
+                else if (index === 2) { rankStyle = "text-amber-600 font-bold text-lg w-8"; bgStyle = "bg-amber-900/20"; }
+
+                const isAdminUI = isAdminMode ? `<button data-id="${item.id}" class="btn-delete-rank relative z-10 text-red-500 hover:text-white hover:bg-red-600 text-xs ml-2 px-2 py-1 bg-red-900/50 rounded transition">삭제</button>` : '';
+                
+                html += `
+                    <div class="flex items-center justify-between p-3 rounded-lg ${bgStyle} hover:bg-gray-700 transition">
+                        <div class="flex items-center gap-3">
+                            <span class="${rankStyle}">${index + 1}</span>
+                            <span class="text-white font-medium break-all truncate max-w-[150px]">${escapeHTML(item.nickname)}</span>
+                            ${isAdminUI}
+                        </div>
+                        <span class="text-blue-400 font-bold tabular-nums">${item.score.toLocaleString()} pts</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            leaderboardContainer.innerHTML = html;
+
+            if (isAdminMode) {
+                document.querySelectorAll('.btn-delete-rank').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const id = e.target.getAttribute('data-id');
+                        showConfirm('기록을 서버에서 완전히 삭제하시겠습니까?', async () => {
+                            if (!GOOGLE_WEB_APP_URL) return;
+                            try {
+                                await fetch(GOOGLE_WEB_APP_URL, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                    body: JSON.stringify({ action: 'delete', id: id })
+                                });
+                                await fetchLeaderboard();
+                                showAlert("기록이 삭제되었습니다.");
+                            } catch (err) {
+                                showAlert("삭제 중 오류가 발생했습니다.");
+                            }
+                        });
+                    });
+                });
+            }
+        }
+
+        // 구글 시트에 랭킹 등록
+        async function submitScore() {
+            const nicknameInput = document.getElementById('input-nickname').value.trim();
+            const errorEl = document.getElementById('nickname-error');
+            if (errorEl) errorEl.textContent = '';
+
+            if (nicknameInput.length < 2) {
+                if (errorEl) errorEl.textContent = '닉네임은 최소 2자 이상 입력해주세요.';
+                return;
+            }
+            if (BAD_WORDS_REGEX.test(nicknameInput)) {
+                if (errorEl) errorEl.textContent = '부적절한 단어가 포함되어 있습니다.';
+                return;
+            }
+
+            const btn = document.getElementById('btn-submit-score');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '등록 중...';
+            }
+
+            const newEntry = {
+                id: Date.now().toString() + Math.floor(Math.random()*1000),
+                nickname: nicknameInput,
+                score: score,
+                timestamp: new Date().toISOString()
+            };
+
+            try {
+                // 구글 시트로 POST 요청 전송
+                const response = await fetch(GOOGLE_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                    body: JSON.stringify({ action: 'add', data: newEntry })
+                });
+
+                if (!response.ok) throw new Error("서버 응답 오류");
+                
+                // 등록 완료 후 랭킹 새로 불러오기
+                await fetchLeaderboard(); 
+                
+                const section = document.getElementById('rank-registration-section');
+                if (section) section.classList.add('hidden');
+                showAlert("🏆 명예의 전당에 등록되었습니다!");
+                
+            } catch (error) {
+                console.warn(error);
+                showAlert("구글 웹앱 권한 설정 문제로 랭킹 등록에 실패했습니다.");
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🏆 랭킹 등록하기';
+                }
+            }
+        }
+
+        // ==========================================
+        // 게임 로직
+        // ==========================================
+        function createBoard() {
+            if (!gridEl) return;
+            gridEl.innerHTML = '';
+            boardEls = [];
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                let rowEls = [];
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    gridEl.appendChild(cell);
+                    rowEls.push(cell);
+                }
+                boardEls.push(rowEls);
+            }
+        }
+
+        function updateBoardVisuals() {
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const cell = boardEls[r]?.[c];
+                    if (cell) {
+                        if (grid[r][c] !== 0) {
+                            cell.classList.add('filled');
+                            cell.style.backgroundColor = grid[r][c];
+                        } else {
+                            cell.classList.remove('filled');
+                            cell.style.backgroundColor = ''; 
+                        }
+                    }
+                }
+            }
+        }
+
+        function getRandomUniqueBlock() {
+            const activeIndices = currentBlocks.filter(b => b && !b.used).map(b => b.shapeIndex);
+            let available = SHAPES.map((_, i) => i).filter(i => !activeIndices.includes(i));
+            if (available.length === 0) available = SHAPES.map((_, i) => i);
+            const idx = available[Math.floor(Math.random() * available.length)];
+            return { ...SHAPES[idx], shapeIndex: idx, used: false };
+        }
+
+        function generateRandomBlocks() {
+            currentBlocks = [getRandomUniqueBlock(), getRandomUniqueBlock(), getRandomUniqueBlock()];
+            renderBlockOptions();
+            checkGameOverStatus();
+        }
+
+        function renderBlockOptions() {
+            for (let i = 0; i < 3; i++) {
+                const wrapper = blockWrappers[i];
+                if (!wrapper) continue;
+                wrapper.innerHTML = ''; 
+                const blockObj = currentBlocks[i];
+
+                if (blockObj && !blockObj.used) {
+                    const container = document.createElement('div');
+                    container.className = 'shape-container';
+                    container.dataset.index = i;
+                    container.style.gridTemplateColumns = `repeat(${blockObj.matrix[0].length}, var(--opt-cell-size))`;
+                    container.style.gridTemplateRows = `repeat(${blockObj.matrix.length}, var(--opt-cell-size))`;
+
+                    for (let r = 0; r < blockObj.matrix.length; r++) {
+                        for (let c = 0; c < blockObj.matrix[0].length; c++) {
+                            const cell = document.createElement('div');
+                            if (blockObj.matrix[r][c] === 1) {
+                                cell.className = 'shape-cell';
+                                cell.style.backgroundColor = blockObj.color;
+                            } else {
+                                cell.style.width = 'var(--opt-cell-size)';
+                                cell.style.height = 'var(--opt-cell-size)';
+                            }
+                            container.appendChild(cell);
+                        }
+                    }
+                    
+                    container.addEventListener('mousedown', handleDragStart);
+                    container.addEventListener('touchstart', handleDragStart, { passive: false });
+                    
+                    wrapper.appendChild(container);
+                }
+            }
+        }
+
+        function handleDragStart(e) {
+            if (isGameOver) return;
+            e.preventDefault(); 
+            
+            draggedElement = e.currentTarget;
+            draggedIndex = parseInt(draggedElement.dataset.index);
+            
+            const rect = draggedElement.getBoundingClientRect();
+            const point = e.type.includes('mouse') ? e : e.touches[0];
+            
+            dragPropX = Math.max(0, Math.min(1, (point.clientX - rect.left) / rect.width));
+            dragPropY = Math.max(0, Math.min(1, (point.clientY - rect.top) / rect.height));
+
+            draggedElement.style.opacity = '0.3';
+
+            const gridBox = gridEl.getBoundingClientRect();
+            const boardCellSize = gridBox.width / BOARD_SIZE;
+            
+            const firstCell = draggedElement.querySelector('.shape-cell');
+            const renderedCellSize = firstCell ? firstCell.getBoundingClientRect().width : 20;
+            dragTargetScale = boardCellSize / renderedCellSize; 
+
+            dragClone = draggedElement.cloneNode(true);
+            dragClone.classList.add('dragging');
+            dragClone.style.position = 'fixed';
+            dragClone.style.margin = '0';
+            dragClone.style.transform = `scale(${dragTargetScale})`;
+            dragClone.style.transformOrigin = 'top left';
+            document.body.appendChild(dragClone);
+
+            currentRow = -1;
+            currentCol = -1;
+            handleDragMove(e);
+
+            document.addEventListener('mousemove', handleDragMove);
+            document.addEventListener('mouseup', handleDragEnd);
+            document.addEventListener('touchmove', handleDragMove, { passive: false });
+            document.addEventListener('touchend', handleDragEnd);
+            document.addEventListener('touchcancel', handleDragEnd);
+        }
+
+        function handleDragMove(e) {
+            if (!dragClone) return;
+            e.preventDefault();
+
+            const point = e.type.includes('mouse') ? e : e.touches[0];
+            const isMobile = window.innerWidth <= 600;
+            
+            const rect = draggedElement.getBoundingClientRect();
+            const scaledWidth = rect.width * dragTargetScale;
+            const scaledHeight = rect.height * dragTargetScale;
+            
+            let offsetX, offsetY;
+            if (isMobile) {
+                offsetX = scaledWidth / 2;
+                offsetY = scaledHeight + 60; 
+            } else {
+                offsetX = scaledWidth * dragPropX;
+                offsetY = scaledHeight * dragPropY + 10;
+            }
+            
+            const currentLeft = point.clientX - offsetX;
+            const currentTop = point.clientY - offsetY;
+
+            dragClone.style.left = currentLeft + 'px';
+            dragClone.style.top = currentTop + 'px';
+
+            const gridBox = gridEl.getBoundingClientRect();
+            const boardCellSize = gridBox.width / BOARD_SIZE;
+            
+            const col = Math.round((currentLeft - gridBox.left) / boardCellSize);
+            const row = Math.round((currentTop - gridBox.top) / boardCellSize);
+
+            if (currentRow !== row || currentCol !== col) {
+                currentRow = row;
+                currentCol = col;
+                checkPlacementHighlight(row, col, currentBlocks[draggedIndex]);
+            }
+        }
+
+        function handleDragEnd(e) {
+            if (!draggedElement) return;
+            
+            document.removeEventListener('mousemove', handleDragMove);
+            document.removeEventListener('mouseup', handleDragEnd);
+            document.removeEventListener('touchmove', handleDragMove);
+            document.removeEventListener('touchend', handleDragEnd);
+            document.removeEventListener('touchcancel', handleDragEnd);
+
+            clearHighlight();
+            if (dragClone) { dragClone.remove(); dragClone = null; }
+            draggedElement.style.opacity = '1';
+
+            const currentIndex = draggedIndex;
+            const block = currentBlocks[currentIndex];
+
+            if (tryPlaceBlock(currentRow, currentCol, block)) {
+                currentBlocks[currentIndex].used = true;
+                if (!isGameOver) currentBlocks[currentIndex] = getRandomUniqueBlock();
+                renderBlockOptions();
+                checkLines();
+            }
+
+            draggedElement = null;
+            draggedIndex = -1;
+            currentRow = -1;
+            currentCol = -1;
+        }
+
+        function checkPlacementHighlight(startRow, startCol, block) {
+            clearHighlight();
+            if (!block) return;
+            if (startRow < 0 || startCol < 0 || startRow >= BOARD_SIZE || startCol >= BOARD_SIZE) return;
+
+            if (canPlaceBlock(startRow, startCol, block.matrix)) {
+                const matrix = block.matrix;
+                for (let r = 0; r < matrix.length; r++) {
+                    for (let c = 0; c < matrix[0].length; c++) {
+                        if (matrix[r][c] === 1) {
+                            const rIdx = startRow + r;
+                            const cIdx = startCol + c;
+                            if (rIdx < BOARD_SIZE && cIdx < BOARD_SIZE) {
+                                const cell = boardEls[rIdx]?.[cIdx];
+                                if (cell) {
+                                    cell.classList.add('highlight');
+                                    cell.style.backgroundColor = block.color;
+                                    cell.style.opacity = '0.6';
+                                    cell.style.boxShadow = 'inset 0 0 10px rgba(255,255,255,0.4)';
+                                    placeholderCells.push(cell);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function clearHighlight() {
+            placeholderCells.forEach(cell => {
+                if (cell) {
+                    cell.classList.remove('highlight');
+                    cell.style.backgroundColor = '';
+                    cell.style.opacity = '';
+                    cell.style.boxShadow = '';
+                }
+            });
+            placeholderCells = [];
+        }
+
+        function canPlaceBlock(startRow, startCol, matrix) {
+            const rows = matrix.length;
+            const cols = matrix[0].length;
+            if (startRow + rows > BOARD_SIZE || startCol + cols > BOARD_SIZE) return false;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (matrix[r][c] === 1 && grid[startRow + r][startCol + c] !== 0) return false;
+                }
+            }
+            return true;
+        }
+
+        function tryPlaceBlock(startRow, startCol, block) {
+            if (!block) return false;
+            if (startRow < 0 || startCol < 0) return false;
+            if (!canPlaceBlock(startRow, startCol, block.matrix)) return false;
+            
+            let blocksPlaced = 0;
+            for (let r = 0; r < block.matrix.length; r++) {
+                for (let c = 0; c < block.matrix[0].length; c++) {
+                    if (block.matrix[r][c] === 1) {
+                        grid[startRow + r][startCol + c] = block.color;
+                        blocksPlaced++;
+                    }
+                }
+            }
+            
+            addScore(blocksPlaced);
+            updateBoardVisuals();
+            return true;
+        }
+
+        function checkLines() {
+            let rowsToClear = [], colsToClear = [];
+
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                if (grid[i].every(cell => cell !== 0)) rowsToClear.push(i);
+                if (grid.every(row => row[i] !== 0)) colsToClear.push(i);
+            }
+
+            const linesCleared = rowsToClear.length + colsToClear.length;
+            if (linesCleared > 0) animateAndClear(rowsToClear, colsToClear, linesCleared);
+            else checkGameOverStatus();
+        }
+
+        function animateAndClear(rows, cols, linesCleared) {
+            const cellsToAnimate = new Set();
+            rows.forEach(r => { for (let c = 0; c < BOARD_SIZE; c++) cellsToAnimate.add(`${r},${c}`); });
+            cols.forEach(c => { for (let r = 0; r < BOARD_SIZE; r++) cellsToAnimate.add(`${r},${c}`); });
+
+            addScore(linesCleared * 10 + (linesCleared > 1 ? (linesCleared - 1) * 15 : 0));
+
+            cellsToAnimate.forEach(coord => {
+                const [r, c] = coord.split(',');
+                const cell = boardEls[r]?.[c];
+                if (cell) cell.classList.add('clearing');
+            });
+
+            setTimeout(() => {
+                rows.forEach(r => { for (let c = 0; c < BOARD_SIZE; c++) grid[r][c] = 0; });
+                cols.forEach(c => { for (let r = 0; r < BOARD_SIZE; r++) grid[r][c] = 0; });
+
+                cellsToAnimate.forEach(coord => {
+                    const [r, c] = coord.split(',');
+                    const cell = boardEls[r]?.[c];
+                    if (cell) cell.classList.remove('clearing');
+                });
+
+                updateBoardVisuals();
+                checkGameOverStatus();
+            }, 250); 
+        }
+
+        function addScore(points) {
+            score += points;
+            if (scoreEl) scoreEl.textContent = score;
+        }
+
+        function checkGameOverStatus() {
+            if (isGameOver) return;
+            const canPlayAny = currentBlocks.some(blockObj => {
+                if (!blockObj || blockObj.used) return false;
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        if (canPlaceBlock(r, c, blockObj.matrix)) return true;
+                    }
+                }
+                return false;
+            });
+
+            if (!canPlayAny) handleGameOver("더 이상 블록을 둘 곳이 없습니다.");
+        }
+
+        function handleGameOver(reason) {
+            isGameOver = true;
+            clearInterval(timerInterval);
+            
+            const goDesc = document.getElementById('gameover-desc');
+            const goTitle = document.getElementById('gameover-title');
+            const fScore = document.getElementById('final-score');
+            const inputNick = document.getElementById('input-nickname');
+            const errNick = document.getElementById('nickname-error');
+            const rankSec = document.getElementById('rank-registration-section');
+
+            if (goDesc) goDesc.textContent = reason;
+            if (goTitle) goTitle.textContent = reason.includes("시간") ? "TIME OVER" : "GAME OVER";
+            if (fScore) fScore.textContent = score;
+            
+            if (inputNick) inputNick.value = '';
+            if (errNick) errNick.textContent = '';
+            if (rankSec) rankSec.classList.remove('hidden');
+
+            switchScreen('gameover');
+        }
+
+        function startGame() {
+            grid = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
+            score = 0;
+            timeRemaining = TIME_LIMIT;
+            isGameOver = false;
+            if (scoreEl) scoreEl.textContent = '0';
+            if (timerEl) {
+                timerEl.textContent = formatTime(timeRemaining);
+                timerEl.classList.remove('text-red-600', 'animate-pulse');
+            }
+            
+            createBoard();
+            updateBoardVisuals();
+            generateRandomBlocks();
+            switchScreen('game');
+
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                if (timerEl) {
+                    timerEl.textContent = formatTime(timeRemaining);
+                    if (timeRemaining <= 30) timerEl.classList.add('text-red-600');
+                    if (timeRemaining <= 10) timerEl.classList.add('animate-pulse');
+                }
+                if (timeRemaining <= 0) handleGameOver("제한 시간이 종료되었습니다!");
+            }, 1000);
+        }
+
+        // 버튼 이벤트 바인딩
+        document.getElementById('btn-start-game')?.addEventListener('click', startGame);
+        document.getElementById('btn-restart-game')?.addEventListener('click', startGame);
+        document.getElementById('btn-back-to-home')?.addEventListener('click', () => switchScreen('home'));
+        document.getElementById('btn-submit-score')?.addEventListener('click', submitScore);
+
+        document.getElementById('btn-admin-login')?.addEventListener('click', () => {
+            const adminModal = document.getElementById('modal-admin');
+            const adminPw = document.getElementById('input-admin-pw');
+            if (adminModal) adminModal.classList.remove('hidden');
+            if (adminPw) {
+                adminPw.value = '';
+                adminPw.focus();
+            }
+        });
+        document.getElementById('btn-admin-cancel')?.addEventListener('click', () => {
+            const adminModal = document.getElementById('modal-admin');
+            if (adminModal) adminModal.classList.add('hidden');
+        });
+        document.getElementById('btn-admin-confirm')?.addEventListener('click', () => {
+            const adminPw = document.getElementById('input-admin-pw');
+            if (adminPw && adminPw.value === ADMIN_PASSWORD) {
+                isAdminMode = true;
+                const adminModal = document.getElementById('modal-admin');
+                if (adminModal) adminModal.classList.add('hidden');
+                showAlert("관리자 모드가 켜졌습니다. 순위표에서 기록을 삭제할 수 있습니다.");
+                renderLeaderboard(); 
+            } else {
+                showAlert("비밀번호가 틀렸습니다."); 
+            }
+        });
+
+        // DOM 준비 완료 시 구글 연동 시작
+        window.addEventListener('DOMContentLoaded', () => {
+            startDatabaseSync();
+        });
+    </script>
+</body>
+</html>
